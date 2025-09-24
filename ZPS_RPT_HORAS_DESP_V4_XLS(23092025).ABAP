@@ -64,7 +64,7 @@
 *& Referência   : INC0138977
 *& Transporte   : S4DK908489
 *& Ch. pesquisa : RLA@SBX-ID-EXCEL_FORM_004
-*& Objetivo     : - Nova customização do layout excel
+*& Objetivo     : - new excel layout customization
 *&--------------------------------------------------------------------
 
 CLASS lcl_excel_form DEFINITION.
@@ -81,6 +81,8 @@ CLASS lcl_excel_form DEFINITION.
     METHODS set_sheets.
     METHODS set_sheet_title.
     METHODS download_xls.
+    METHODS print_honorarios_despesas.
+    METHODS print_despesas.
 
     "table to get data from report
     DATA: gt_honorarios TYPE TABLE OF ty_s_report,
@@ -104,7 +106,8 @@ CLASS lcl_excel_form DEFINITION.
       tp_style_bold_center_guid5 TYPE zexcel_cell_style,
       tp_style_bold_center_guid6 TYPE zexcel_cell_style,
       tp_style_bold_center_guid7 TYPE zexcel_cell_style,
-      tp_style_bold_center_guid8 TYPE zexcel_cell_style.
+      tp_style_bold_center_guid8 TYPE zexcel_cell_style,
+      tp_style_bold_center_guid9 TYPE zexcel_cell_style.
 
     DATA: "excel file variables
       gv_title    TYPE zexcel_sheet_title,
@@ -115,19 +118,330 @@ CLASS lcl_excel_form DEFINITION.
           lv_flag_despesas            TYPE abap_bool VALUE 'false',
           lv_flag_honorarios_despesas TYPE abap_bool VALUE 'false'.
 
+    DATA: gt_kunnr       TYPE TABLE OF kunnr,
+          gt_subprojects TYPE TABLE OF ty_s_report.
+
 ENDCLASS.
 
 CLASS lcl_excel_form IMPLEMENTATION.
 
+  METHOD print_despesas.
+
+    set_sheet_title( ).
+
+    DATA: lv_old_assunto            TYPE char24,
+          lv_old_subassunto         TYPE char24,
+          lv_old_despesa            TYPE char24,
+          lv_old_subassunto_despesa TYPE char24.
+
+    "counters sets with initial position for honorarios.
+    DATA: lv_countlines TYPE i VALUE 2.
+
+    "hours and amounts aggregations for
+    DATA: lv_total_hours  TYPE p DECIMALS 2,
+          lv_total_amount TYPE p DECIMALS 2.
+
+    SORT gt_honorarios BY pep_mask kunnr ASCENDING.
+    SORT gt_despesas   BY pep_mask kunnr ASCENDING.
+
+    LOOP AT gt_kunnr INTO DATA(ls_kunnr).
+
+      IF gt_despesas IS NOT INITIAL.
+
+        LOOP AT gt_despesas INTO gs_data WHERE kunnr = ls_kunnr.
+
+          IF lv_old_assunto EQ gs_data-pep_mask.
+            CONTINUE.
+          ENDIF.
+
+          "HONORARIOS
+          "--------------------------------------------------------------------------------------------------------------------------------------------------
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+          ADD 1 TO lv_countlines.
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
+          ADD 1 TO lv_countlines.
+
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                      ip_style = tp_style_bold_center_guid ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo (Despesas)' ip_style = tp_style_bold_center_guid ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'                     ip_style = tp_style_bold_center_guid ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'                ip_style = tp_style_bold_center_guid ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'                  ip_style = tp_style_bold_center_guid ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                      ip_style = tp_style_bold_center_guid ).
+          ADD 1 TO lv_countlines.
+
+          LOOP AT gt_despesas INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask AND kunnr EQ ls_kunnr.
+
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data                           ip_style = tp_style_bold_center_guid3 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-type_txt                       ip_style = tp_style_bold_center_guid4 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data2-belnr                          ip_style = tp_style_bold_center_guid4 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data2-montante                       ip_style = tp_style_bold_center_guid2 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
+            ADD 1 TO lv_countlines.
+
+            "sum hours and amount to pay
+            lv_total_hours  = lv_total_hours  + gs_data2-horas.
+            lv_total_amount = lv_total_amount + gs_data2-montante.
+
+          ENDLOOP.
+
+          lv_old_assunto = gs_data-pep_mask.
+
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total das despesas' ip_style = tp_style_bold_center_guid9 ).
+*          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
+          ADD 2 TO lv_countlines.
+
+          CLEAR: lv_total_hours, lv_total_amount.
+
+        ENDLOOP.
+      ENDIF.
+    ENDLOOP.
+
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    "                                                          ADJUST FOR COLUMNS
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'A' ).
+    lo_column->set_width( ip_width = 10 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'B' ).
+    lo_column->set_width( ip_width = 100 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
+    lo_column->set_width( ip_width = 30 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
+    lo_column->set_width( ip_width = 20 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
+    lo_column->set_width( ip_width = 20 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
+    lo_column->set_width( ip_width = 35 ).
+
+  ENDMETHOD.
+
+  METHOD print_honorarios_despesas.
+
+    set_sheet_title( ).
+
+    DATA: lv_old_assunto            TYPE char24,
+          lv_old_subassunto         TYPE char24,
+          lv_old_despesa            TYPE char24,
+          lv_old_subassunto_despesa TYPE char24.
+
+    "counters sets with initial position for honorarios.
+    DATA: lv_countlines TYPE i VALUE 2.
+
+    "hours and amounts aggregations for
+    DATA: lv_total_hours  TYPE p DECIMALS 2,
+          lv_total_amount TYPE p DECIMALS 2.
+
+    "teste
+    DATA gt_honorarios2 TYPE TABLE OF ty_s_report.
+    LOOP AT gt_honorarios INTO gs_data WHERE kunnr EQ '0000010298'.
+      APPEND gs_data TO gt_honorarios2.
+    ENDLOOP.
+    SORT gt_honorarios2 BY pep_mask.
+    CLEAR gs_data.
+
+    SORT gt_honorarios BY pep_mask kunnr ASCENDING.
+    SORT gt_despesas   BY pep_mask kunnr ASCENDING.
+
+*    LOOP AT gt_kunnr INTO DATA(ls_kunnr).
+
+    IF gt_honorarios IS NOT INITIAL.
+
+*        LOOP AT gt_honorarios INTO gs_data WHERE kunnr = ls_kunnr.
+      LOOP AT gt_honorarios INTO gs_data.
+
+        IF lv_old_assunto EQ gs_data-pep_mask.
+          CONTINUE.
+        ENDIF.
+
+        "HONORARIOS
+        "--------------------------------------------------------------------------------------------------------------------------------------------------
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+        ADD 1 TO lv_countlines.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
+        ADD 1 TO lv_countlines.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'           ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo' ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'          ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'     ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'       ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'           ip_style = tp_style_bold_center_guid ).
+        ADD 1 TO lv_countlines.
+
+        LOOP AT gt_honorarios INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask.
+
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data                           ip_style = tp_style_bold_center_guid3 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-horas                          ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data2-pvp                            ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data2-montante                       ip_style = tp_style_bold_center_guid2 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
+          ADD 1 TO lv_countlines.
+
+          "sum hours and amount to pay
+          lv_total_hours  = lv_total_hours  + gs_data2-horas.
+          lv_total_amount = lv_total_amount + gs_data2-montante.
+
+        ENDLOOP.
+
+        lv_old_assunto = gs_data-pep_mask.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total do assunto' ip_style = tp_style_bold_center_guid9 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style    = tp_style_bold_center_guid5 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style    = tp_style_bold_center_guid5 ).
+        ADD 2 TO lv_countlines.
+
+        CLEAR: lv_total_hours, lv_total_amount.
+
+*          SUBPROJETOS
+*          --------------------------------------------------------------------------------------------------------------------------------------------------
+*          LOOP AT gt_subprojects INTO DATA(ls_subprojects).
+*
+*            IF lv_old_subassunto EQ ls_subprojects-pep_mask.
+*              CONTINUE.
+*            ENDIF.
+*
+*            "compare project with subproject
+*            DATA(strlen_pepmask) = strlen( gs_data-pep_mask ).
+*            DATA temp_pepmask TYPE string.
+*            temp_pepmask = ls_subprojects-pep_mask(strlen_pepmask).
+*
+*            IF temp_pepmask EQ gs_data-pep_mask. "is a subproject
+*
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ ls_subprojects-pep_mask } { ls_subprojects-post1 }| ip_style = tp_style_bold_center_guid8 ).
+*              ADD 1 TO lv_countlines.
+*
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'           ip_style = tp_style_bold_center_guid ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo' ip_style = tp_style_bold_center_guid ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'          ip_style = tp_style_bold_center_guid ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'     ip_style = tp_style_bold_center_guid ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'       ip_style = tp_style_bold_center_guid ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'           ip_style = tp_style_bold_center_guid ).
+*              ADD 1 TO lv_countlines.
+*
+*              LOOP AT gt_honorarios INTO DATA(gs_data3) WHERE pep_mask EQ ls_subprojects-pep_mask.
+*
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data3-data                           ip_style = tp_style_bold_center_guid3 ).
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data3-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data3-horas                          ip_style = tp_style_bold_center_guid4 ).
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data3-pvp                            ip_style = tp_style_bold_center_guid4 ).
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data3-montante                       ip_style = tp_style_bold_center_guid2 ).
+*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
+*                ADD 1 TO lv_countlines.
+*
+*                "sum hours and amount to pay
+*                lv_total_hours  = lv_total_hours  + gs_data3-horas.
+*                lv_total_amount = lv_total_amount + gs_data3-montante.
+*
+*              ENDLOOP.
+*
+*              lv_old_subassunto = ls_subprojects-pep_mask.
+*
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total do assunto' ip_style = tp_style_bold_center_guid9 ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours     ip_style = tp_style_bold_center_guid5 ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount    ip_style = tp_style_bold_center_guid5 ).
+*              ADD 2 TO lv_countlines.
+*              CLEAR: lv_total_hours, lv_total_amount.
+*
+*            ENDIF.
+*          ENDLOOP.
+
+      ENDLOOP. "ENDLOOP HONORARIOS
+    ENDIF.     "ENDIF   HONORARIOS
+
+*          despesas
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    IF gt_despesas IS NOT INITIAL.
+
+*            LOOP AT gt_despesas INTO DATA(gs_despesas3) WHERE pep_mask EQ gs_data-pep_mask AND kunnr EQ ls_kunnr.
+      LOOP AT gt_despesas INTO DATA(gs_despesas3).
+
+        IF lv_old_subassunto_despesa EQ gs_data-pep_mask.
+          CONTINUE.
+        ENDIF.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-kunnr } { gs_despesas3-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+        ADD 1 TO lv_countlines.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-pep_mask } { gs_despesas3-post1 }| ip_style = tp_style_bold_center_guid8 ).
+        ADD 1 TO lv_countlines.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                      ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo (Despesas)' ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Designação'                ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Relatório da Despesa'      ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'                  ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                      ip_style = tp_style_bold_center_guid ).
+        ADD 1 TO lv_countlines.
+
+        LOOP AT gt_despesas INTO DATA(gs_despesas4) WHERE pep_mask EQ gs_despesas3-pep_mask.
+
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_despesas4-data                               ip_style = tp_style_bold_center_guid3 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_despesas4-descriminativo_str                 ip_style = tp_style_bold_center_guid6 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt                           ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-belnr                              ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_despesas4-montante                           ip_style = tp_style_bold_center_guid2 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_despesas4-rufnm } { gs_despesas4-pernr }| ip_style = tp_style_bold_center_guid2 ).
+          ADD 1 TO lv_countlines.
+
+          "sum hours and amount to pay
+          lv_total_hours  = lv_total_hours  + gs_despesas4-horas.
+          lv_total_amount = lv_total_amount + gs_despesas4-montante.
+
+        ENDLOOP.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total das despesas' ip_style = tp_style_bold_center_guid9 ).
+*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours       ip_style = tp_style_bold_center_guid5 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount      ip_style = tp_style_bold_center_guid5 ).
+        ADD 2 TO lv_countlines.
+
+        CLEAR: lv_total_hours, lv_total_amount.
+
+      ENDLOOP. "ENDLOOP DESPESAS
+    ENDIF.     "ENDIF DESPESAS
+
+*    ENDLOOP. "ENDLOOP CLIENTES
+
+
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    "                                                          ADJUST FOR COLUMNS
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'A' ).
+    lo_column->set_width( ip_width = 10 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'B' ).
+    lo_column->set_width( ip_width = 100 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
+    lo_column->set_width( ip_width = 40 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
+    lo_column->set_width( ip_width = 20 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
+    lo_column->set_width( ip_width = 20 ).
+
+    lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
+    lo_column->set_width( ip_width = 35 ).
+
+  ENDMETHOD.
+
   METHOD get_print_setup.
 
-  "--------------------------------------------------------------------------------------------
-  " DATA       : 08.09.2025
-  " CREATED BY : RLA@SBX
-  "
-  " FUNCTIONALITY:
-  "   - receives program print behavior
-  "--------------------------------------------------------------------------------------------
+    "--------------------------------------------------------------------------------------------
+    " DATA       : 08.09.2025
+    " CREATED BY : RLA@SBX
+    "
+    " FUNCTIONALITY:
+    "   - receives program print behavior
+    "--------------------------------------------------------------------------------------------
 
     "reset flags
     lv_flag_honorarios          = abap_false.
@@ -170,241 +484,12 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
   METHOD set_sheets.
 
-    set_sheet_title( ).
-
-    DATA: lv_old_assunto TYPE char24.
-
-    "counters sets with initial position for honorarios.
-    DATA: lv_countheader       TYPE i VALUE 2,
-          lv_count_tableheader TYPE i VALUE 4,
-          lv_count_tablelines  TYPE i VALUE 5.
-
-    "counters sets with initial position for despesas.
-    DATA: lv_countheader2       TYPE i VALUE 2,
-          lv_count_tableheader2 TYPE i VALUE 4,
-          lv_count_tablelines2  TYPE i VALUE 5.
-
-    "hours and amounts aggregations for
-    DATA: lv_total_hours  TYPE p DECIMALS 2,
-          lv_total_amount TYPE p DECIMALS 2.
-
-    "hours and amounts aggregation for footer (total sums)
-    DATA: lv_total_hours_footer  TYPE p DECIMALS 2,
-          lv_total_amount_footer TYPE p DECIMALS 2.
-
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "                                                           IMPRESSÃO DOS HONORÁRIOS
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    "this method prints expenses or not if exists
     IF gt_honorarios IS NOT INITIAL.
-
-      LOOP AT gt_honorarios INTO gs_data.
-
-        IF lv_old_assunto = gs_data-pep_mask.
-          CONTINUE.
-        ENDIF.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                      HEADER
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_countheader ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
-        ADD 1 TO lv_countheader.
-        lo_worksheet->set_cell( ip_row = lv_countheader ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                       TABLE HEADER
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'A' ip_value = 'Data'            ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'B' ip_value = 'Discriminativo'  ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'C' ip_value = 'Horas'           ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'D' ip_value = 'Preço/Hora'      ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'E' ip_value = 'Montante'        ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader ip_column = 'F' ip_value = 'Nome'            ip_style = tp_style_bold_center_guid ).
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                       TABLE LINES
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        LOOP AT gt_honorarios INTO gs_data WHERE pep_mask = gs_data-pep_mask.
-
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'A' ip_value = gs_data-data                          ip_style = tp_style_bold_center_guid3 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'B' ip_value = gs_data-descriminativo_str            ip_style = tp_style_bold_center_guid6 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'C' ip_value = gs_data-horas                         ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'D' ip_value = gs_data-pvp                           ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'E' ip_value = gs_data-montante                      ip_style = tp_style_bold_center_guid2 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'F' ip_value = |{ gs_data-rufnm } { gs_data-pernr }| ip_style = tp_style_bold_center_guid2 ).
-          ADD 1 TO lv_count_tablelines.
-
-          "sum hours and amount to pay
-          lv_total_hours  = lv_total_hours  + gs_data-horas.
-          lv_total_amount = lv_total_amount + gs_data-montante.
-
-          "sum hours and amount to pay for footer
-          lv_total_hours_footer  = lv_total_hours_footer  + gs_data-horas.
-          lv_total_amount_footer = lv_total_amount_footer + gs_data-montante.
-
-        ENDLOOP.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                        AMOUNT TO PAY HOURS / TOTAL
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
-        lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
-        ADD 1 TO lv_count_tablelines.
-
-        CLEAR: lv_total_hours, lv_total_amount.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                        ADJUST FOR COUNTERS
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lv_countheader       = lv_count_tablelines + 2.  "sets new position for header
-        lv_count_tableheader = lv_countheader + 3.       "sets new position for table header
-        lv_count_tablelines  = lv_count_tableheader.     "sets new position for table lines.
-        "------------------------------------------------------------------------------------
-
-        lv_old_assunto = gs_data-pep_mask.
-
-      ENDLOOP.
-
-      "--------------------------------------------------------------------------------------------------------------------------------------------------
-      "                                                          TOTAL FOR FOOTER
-      "--------------------------------------------------------------------------------------------------------------------------------------------------
-      lv_count_tablelines = lv_count_tablelines - 3.
-
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'B' ip_value = 'TOTAL HONORÁRIOS'     ip_style = tp_style_bold_center_guid7 ).
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'C' ip_value = lv_total_hours_footer  ip_style = tp_style_bold_center_guid5 ).
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines ip_column = 'E' ip_value = lv_total_amount_footer ip_style = tp_style_bold_center_guid5 ).
-
-      CLEAR gs_data.
-      CLEAR lv_old_assunto.
-      CLEAR lv_total_hours.
-      CLEAR lv_total_amount.
-      CLEAR lv_total_hours_footer.
-      CLEAR lv_total_amount_footer.
-
+      print_honorarios_despesas( ).
+    ELSEIF gt_honorarios IS INITIAL AND gt_despesas IS NOT INITIAL.
+      print_despesas( ).
     ENDIF.
-
-    "in case of honorarios + despesas
-    IF lv_flag_honorarios_despesas EQ 'X'.
-      lv_countheader2       = lv_countheader + 3.
-      lv_count_tableheader2 = lv_count_tableheader + 4.
-      lv_count_tablelines2  = lv_count_tablelines  + 8.
-    ENDIF.
-
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "                                                        IMPRESSÃO DAS DESPESAS
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-
-    IF gt_despesas IS NOT INITIAL.
-
-      LOOP AT gt_despesas INTO gs_data.
-
-        IF lv_old_assunto = gs_data-pep_mask.
-          CONTINUE.
-        ENDIF.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                      HEADER
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_countheader2 ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
-        ADD 1 TO lv_countheader2.
-        lo_worksheet->set_cell( ip_row = lv_countheader2 ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                       TABLE HEADER
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'A' ip_value = 'Data'            ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'B' ip_value = 'Discriminativo'  ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'C' ip_value = 'Horas'           ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'D' ip_value = 'Preço/Hora'      ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'E' ip_value = 'Montante'        ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_count_tableheader2 ip_column = 'F' ip_value = 'Nome'            ip_style = tp_style_bold_center_guid ).
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                       TABLE LINES
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        LOOP AT gt_despesas INTO gs_data WHERE pep_mask = gs_data-pep_mask.
-
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'A' ip_value = gs_data-data                          ip_style = tp_style_bold_center_guid3 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'B' ip_value = gs_data-descriminativo_str            ip_style = tp_style_bold_center_guid6 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'C' ip_value = gs_data-horas                         ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'D' ip_value = gs_data-pvp                           ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'E' ip_value = gs_data-montante                      ip_style = tp_style_bold_center_guid2 ).
-          lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'F' ip_value = |{ gs_data-rufnm } { gs_data-pernr }| ip_style = tp_style_bold_center_guid2 ).
-          ADD 1 TO lv_count_tablelines2.
-
-          "sum hours and amount to pay
-          lv_total_hours  = lv_total_hours  + gs_data-horas.
-          lv_total_amount = lv_total_amount + gs_data-montante.
-
-          "sum hours and amount to pay for footer
-          lv_total_hours_footer  = lv_total_hours_footer  + gs_data-horas.
-          lv_total_amount_footer = lv_total_amount_footer + gs_data-montante.
-
-        ENDLOOP.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                        AMOUNT TO PAY HOURS / TOTAL
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
-        lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
-        ADD 1 TO lv_count_tablelines2.
-
-        CLEAR: lv_total_hours, lv_total_amount.
-
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        "                                                        ADJUST FOR COUNTERS
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lv_countheader2       = lv_count_tablelines2 + 2.  "sets new position for header
-        lv_count_tableheader2 = lv_countheader2 + 3.       "sets new position for table header
-        lv_count_tablelines2  = lv_count_tableheader2.     "sets new position for table lines.
-        "------------------------------------------------------------------------------------
-
-        lv_old_assunto = gs_data-pep_mask.
-
-      ENDLOOP.
-
-      "--------------------------------------------------------------------------------------------------------------------------------------------------
-      "                                                          TOTAL FOR FOOTER
-      "--------------------------------------------------------------------------------------------------------------------------------------------------
-      lv_count_tablelines2 = lv_count_tablelines2 - 3.
-
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'B' ip_value = 'TOTAL DESPESAS'       ip_style = tp_style_bold_center_guid7 ).
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'C' ip_value = lv_total_hours_footer  ip_style = tp_style_bold_center_guid5 ).
-      lo_worksheet->set_cell( ip_row = lv_count_tablelines2 ip_column = 'E' ip_value = lv_total_amount_footer ip_style = tp_style_bold_center_guid5 ).
-
-    ENDIF.
-
-
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "                                                          ADJUST FOR COLUMNS
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-
-    "set width for col A -> Header Info
-    lo_column = lo_worksheet->get_column_dimension( ip_column = 'A' ).
-    lo_column->set_width( ip_width = 10 ).
-
-    "set width for col B -> Decritive Text
-    lo_column = lo_worksheet->get_column_dimension( ip_column = 'B' ).
-    lo_column->set_width( ip_width = 100 ).
-
-    "set width for col D -> Price/Hours
-    lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
-    lo_column->set_width( ip_width = 20 ).
-
-    "set width for col E -> Amount
-    lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
-    lo_column->set_width( ip_width = 20 ).
-
-    "set width for col F -> Lawyer's Name
-    lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
-    lo_column->set_width( ip_width = 30 ).
 
   ENDMETHOD.
 
@@ -419,6 +504,8 @@ CLASS lcl_excel_form IMPLEMENTATION.
     "
     " UPDATES
     "   - 08.09.2025 :: new way of distributing data
+    "   - 23.09.2025 :: set customers into new table for kunnr
+    "   - 23.09.2025 :: set subprojects into new table for projects
     "--------------------------------------------------------------------------------------------
 
     CREATE OBJECT o_xl.
@@ -429,24 +516,53 @@ CLASS lcl_excel_form IMPLEMENTATION.
       LOOP AT gt_dados INTO DATA(ls_honorarios) WHERE lstar EQ 'A001'.
         MOVE-CORRESPONDING ls_honorarios TO gs_data.
         APPEND gs_data TO gt_honorarios.
+
+        IF gs_data-kunnr IS NOT INITIAL.
+          APPEND ls_honorarios-kunnr TO gt_kunnr.
+        ELSE.
+          APPEND ls_honorarios TO gt_subprojects.
+        ENDIF.
       ENDLOOP.
       SORT gt_honorarios BY pep_mask ASCENDING.
     ELSEIF lv_flag_despesas EQ 'X'.
       LOOP AT gt_dados INTO DATA(ls_despesas) WHERE lstar NE 'A001'.
         MOVE-CORRESPONDING ls_despesas TO gs_data.
         APPEND gs_data TO gt_despesas.
+
+        IF gs_data-kunnr IS NOT INITIAL.
+          APPEND ls_despesas-kunnr TO gt_kunnr.
+        ELSE.
+          APPEND ls_honorarios TO gt_subprojects.
+        ENDIF.
       ENDLOOP.
     ELSE.
       LOOP AT gt_dados INTO DATA(ls_honorarios2) WHERE lstar EQ 'A001'.
         MOVE-CORRESPONDING ls_honorarios2 TO gs_data.
         APPEND gs_data TO gt_honorarios.
+
+        IF ls_honorarios2-kunnr IS NOT INITIAL.
+          APPEND ls_honorarios2-kunnr TO gt_kunnr.
+        ELSE.
+          APPEND ls_honorarios2 TO gt_subprojects.
+        ENDIF.
       ENDLOOP.
       SORT gt_honorarios BY pep_mask ASCENDING.
       LOOP AT gt_dados INTO DATA(ls_despesas2) WHERE lstar NE 'A001'.
         MOVE-CORRESPONDING ls_despesas2 TO gs_data.
         APPEND gs_data TO gt_despesas.
+
+        IF ls_despesas2-kunnr IS NOT INITIAL.
+          APPEND ls_despesas2-kunnr TO gt_kunnr.
+        ELSE.
+          APPEND ls_honorarios2 TO gt_subprojects.
+        ENDIF.
       ENDLOOP.
     ENDIF.
+
+    SORT gt_kunnr ASCENDING.       "customers
+    SORT gt_subprojects ASCENDING. "subprojects
+
+    DELETE ADJACENT DUPLICATES FROM gt_kunnr.
 
   ENDMETHOD.
 
@@ -482,6 +598,8 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
     gv_title = | { sy-datum } |.
     lo_worksheet->set_title( ip_title = gv_title ).
+
+    lo_worksheet->set_show_gridlines( i_show_gridlines = abap_false ).
 
   ENDMETHOD.
 
@@ -569,6 +687,21 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_style->fill->filltype             = zcl_excel_style_fill=>c_fill_solid.
     lo_style->fill->fgcolor-rgb          = zcl_excel_style_color=>c_gray.
     tp_style_bold_center_guid            = lo_style->get_guid( ). "nao esquecer
+
+    "total do assunto e total despesas style
+    lo_style                             = o_xl->add_new_style( ).
+    lo_style->font->bold                 = abap_true.
+    lo_style->font->italic               = abap_false.
+    lo_style->font->name                 = zcl_excel_style_font=>c_name_arial.
+    lo_style->font->scheme               = zcl_excel_style_font=>c_scheme_none.
+    lo_style->font->size                 = 10.
+    lo_style->font->color-rgb            = zcl_excel_style_color=>c_black.
+    lo_style->alignment->horizontal      = zcl_excel_style_alignment=>c_horizontal_right.
+    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_top.
+*    lo_style->borders->allborders        = o_border_light.
+*    lo_style->fill->filltype             = zcl_excel_style_fill=>c_fill_solid.
+*    lo_style->fill->fgcolor-rgb          = zcl_excel_style_color=>c_white.
+    tp_style_bold_center_guid9           = lo_style->get_guid( ). "nao esquecer
 
     "default
     lo_style                             = o_xl->add_new_style( ).
