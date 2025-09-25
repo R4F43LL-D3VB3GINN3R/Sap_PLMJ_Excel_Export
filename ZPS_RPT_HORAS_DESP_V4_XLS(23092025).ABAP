@@ -118,8 +118,19 @@ CLASS lcl_excel_form DEFINITION.
           lv_flag_despesas            TYPE abap_bool VALUE 'false',
           lv_flag_honorarios_despesas TYPE abap_bool VALUE 'false'.
 
-    DATA: gt_kunnr       TYPE TABLE OF kunnr,
-          gt_subprojects TYPE TABLE OF ty_s_report.
+    TYPES: BEGIN OF ty_somatorios,
+             assunto    TYPE string,
+             horatotal  TYPE i,
+             valortotal TYPE i,
+           END OF ty_somatorios.
+
+    DATA: gt_somatorios TYPE TABLE OF ty_somatorios,
+          gs_somatorios TYPE ty_somatorios.
+
+    DATA: gv_assunto_pai   TYPE string,
+          gv_assunto_filho TYPE string.
+    DATA: gv_strlen_assunto_pai   TYPE i,
+          gv_strlen_assunto_filho TYPE i.
 
 ENDCLASS.
 
@@ -134,6 +145,9 @@ CLASS lcl_excel_form IMPLEMENTATION.
           lv_old_despesa            TYPE char24,
           lv_old_subassunto_despesa TYPE char24.
 
+    DATA: strlen_discriminativo TYPE i.
+    DATA: lv_index_assuntos TYPE i VALUE 0.
+
     "counters sets with initial position for honorarios.
     DATA: lv_countlines TYPE i VALUE 2.
 
@@ -141,67 +155,141 @@ CLASS lcl_excel_form IMPLEMENTATION.
     DATA: lv_total_hours  TYPE p DECIMALS 2,
           lv_total_amount TYPE p DECIMALS 2.
 
-    SORT gt_honorarios BY pep_mask kunnr ASCENDING.
-    SORT gt_despesas   BY pep_mask kunnr ASCENDING.
+    SORT gt_honorarios BY pep_mask.
+    SORT gt_despesas   BY pep_mask.
 
-    LOOP AT gt_kunnr INTO DATA(ls_kunnr).
+    DATA: lv_tothoras  TYPE i,
+          lv_totamount TYPE i.
 
-      IF gt_despesas IS NOT INITIAL.
+    LOOP AT gt_despesas INTO DATA(gs_despesas3).
 
-        LOOP AT gt_despesas INTO gs_data WHERE kunnr = ls_kunnr.
+      IF lv_old_subassunto_despesa EQ gs_despesas3-pep_mask.
+        CONTINUE.
+      ENDIF.
 
-          IF lv_old_assunto EQ gs_data-pep_mask.
-            CONTINUE.
-          ENDIF.
-
-          "HONORARIOS
-          "--------------------------------------------------------------------------------------------------------------------------------------------------
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
-          ADD 1 TO lv_countlines.
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
-          ADD 1 TO lv_countlines.
-
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                      ip_style = tp_style_bold_center_guid ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo (Despesas)' ip_style = tp_style_bold_center_guid ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'                     ip_style = tp_style_bold_center_guid ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'                ip_style = tp_style_bold_center_guid ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'                  ip_style = tp_style_bold_center_guid ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                      ip_style = tp_style_bold_center_guid ).
-          ADD 1 TO lv_countlines.
-
-          LOOP AT gt_despesas INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask AND kunnr EQ ls_kunnr.
-
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data                           ip_style = tp_style_bold_center_guid3 ).
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-type_txt                       ip_style = tp_style_bold_center_guid4 ).
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data2-belnr                          ip_style = tp_style_bold_center_guid4 ).
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data2-montante                       ip_style = tp_style_bold_center_guid2 ).
-            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
+      "Tabelas de Montantes por Projetos e Subprojetos
+      "--------------------------------------------------------------------------------------------------------------------------------------------
+      IF lv_index_assuntos EQ 0.
+        gv_strlen_assunto_pai    = strlen( gs_despesas3-pep_mask ) - 1.
+        gv_assunto_pai           = substring( val = gs_despesas3-pep_mask off = 0 len = gv_strlen_assunto_pai ).
+        gs_somatorios-assunto    = gs_despesas3-pep_mask.
+        gs_somatorios-horatotal  = lv_total_hours.
+        gs_somatorios-valortotal = lv_total_amount.
+        APPEND gs_somatorios TO gt_somatorios.
+      ELSE.
+        gv_strlen_assunto_filho  = strlen( gs_despesas3-pep_mask ) - 1.
+        gv_assunto_filho         = substring( val = gs_despesas3-pep_mask off = 0 len = gv_strlen_assunto_filho ).
+        IF gv_assunto_pai EQ gv_assunto_filho.
+          gs_somatorios-assunto    = gs_despesas3-pep_mask.
+          gs_somatorios-horatotal  = lv_total_hours.
+          gs_somatorios-valortotal = lv_total_amount.
+          APPEND gs_somatorios TO gt_somatorios.
+          gv_assunto_pai = gv_assunto_filho.
+        ELSE.
+          IF lines( gt_somatorios ) > 1.
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Despesas' ip_style = tp_style_bold_center_guid ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Montante'         ip_style = tp_style_bold_center_guid ).
             ADD 1 TO lv_countlines.
 
-            "sum hours and amount to pay
-            lv_total_hours  = lv_total_hours  + gs_data2-horas.
-            lv_total_amount = lv_total_amount + gs_data2-montante.
+            LOOP AT gt_somatorios INTO gs_somatorios.
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
+              ADD 1 TO lv_countlines.
 
-          ENDLOOP.
+              lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+              lv_totamount = lv_totamount + gs_somatorios-valortotal.
+            ENDLOOP.
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
 
-          lv_old_assunto = gs_data-pep_mask.
-
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total das despesas' ip_style = tp_style_bold_center_guid9 ).
-*          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
-          ADD 2 TO lv_countlines.
-
-          CLEAR: lv_total_hours, lv_total_amount.
-
-        ENDLOOP.
+            ADD 2 TO lv_countlines.
+            CLEAR gs_somatorios.
+            CLEAR: lv_tothoras, lv_totamount.
+          ENDIF.
+          CLEAR gt_somatorios.
+          gs_somatorios-assunto    = gs_data-pep_mask.
+          gs_somatorios-horatotal  = lv_total_hours.
+          gs_somatorios-valortotal = lv_total_amount.
+          APPEND gs_somatorios TO gt_somatorios.
+          gv_assunto_pai           = gv_assunto_filho.
+        ENDIF.
       ENDIF.
+
+      "DESPESAS
+      "--------------------------------------------------------------------------------------------------------------------------------------------------------------
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-kunnr } { gs_despesas3-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+      ADD 1 TO lv_countlines.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-pep_mask } { gs_despesas3-post1 }| ip_style = tp_style_bold_center_guid8 ).
+      ADD 1 TO lv_countlines.
+
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                 ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Despesas'             ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Designação'           ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Relatório da Despesa' ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'             ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                 ip_style = tp_style_bold_center_guid ).
+      ADD 1 TO lv_countlines.
+
+      LOOP AT gt_despesas INTO DATA(gs_despesas4) WHERE pep_mask EQ gs_despesas3-pep_mask.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_despesas4-data                               ip_style = tp_style_bold_center_guid3 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_despesas4-descriminativo_str                 ip_style = tp_style_bold_center_guid6 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt                           ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-relexp                             ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_despesas4-montante                           ip_style = tp_style_bold_center_guid2 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_despesas4-rufnm } { gs_despesas4-pernr }| ip_style = tp_style_bold_center_guid2 ).
+        ADD 1 TO lv_countlines.
+
+        "sum hours and amount to pay
+        lv_total_hours  = lv_total_hours  + gs_despesas4-horas.
+        lv_total_amount = lv_total_amount + gs_despesas4-montante.
+
+      ENDLOOP.
+
+      lv_old_subassunto_despesa = gs_despesas3-pep_mask.
+
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
+      ADD 2 TO lv_countlines.
+      ADD 1 TO lv_index_assuntos.
+
+      "insert amounts into sums by projects
+      LOOP AT gt_somatorios INTO gs_somatorios WHERE assunto EQ gs_despesas3-pep_mask.
+        gs_somatorios-valortotal = lv_total_amount.
+        MODIFY gt_somatorios FROM gs_somatorios.
+      ENDLOOP.
+      CLEAR: lv_total_hours, lv_total_amount.
+
     ENDLOOP.
 
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "                                                          ADJUST FOR COLUMNS
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    "Tabelas de Montantes por Projetos e Subprojetos
+    "--------------------------------------------------------------------------------------------------------------------------------------------
+    IF lines( gt_somatorios ) > 1.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Discriminativo' ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Montante'              ip_style = tp_style_bold_center_guid ).
+      ADD 1 TO lv_countlines.
 
+      LOOP AT gt_somatorios INTO gs_somatorios.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
+        ADD 1 TO lv_countlines.
+
+        lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+        lv_totamount = lv_totamount + gs_somatorios-valortotal.
+      ENDLOOP.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
+
+      ADD 2 TO lv_countlines.
+    ENDIF.
+
+    CLEAR gs_somatorios.
+    CLEAR gt_somatorios.
+    CLEAR: lv_tothoras, lv_totamount.
+    CLEAR lv_index_assuntos.
+
+    "COLUMNS
+    "-----------------------------------------------------------------
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'A' ).
     lo_column->set_width( ip_width = 10 ).
 
@@ -209,13 +297,13 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_column->set_width( ip_width = 100 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
-    lo_column->set_width( ip_width = 30 ).
+    lo_column->set_width( ip_width = 28 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 12 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 10 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
     lo_column->set_width( ip_width = 35 ).
@@ -231,6 +319,9 @@ CLASS lcl_excel_form IMPLEMENTATION.
           lv_old_despesa            TYPE char24,
           lv_old_subassunto_despesa TYPE char24.
 
+    DATA: strlen_discriminativo TYPE i.
+    DATA: lv_index_assuntos TYPE i VALUE 0.
+
     "counters sets with initial position for honorarios.
     DATA: lv_countlines TYPE i VALUE 2.
 
@@ -238,146 +329,220 @@ CLASS lcl_excel_form IMPLEMENTATION.
     DATA: lv_total_hours  TYPE p DECIMALS 2,
           lv_total_amount TYPE p DECIMALS 2.
 
-    "teste
-    DATA gt_honorarios2 TYPE TABLE OF ty_s_report.
-    LOOP AT gt_honorarios INTO gs_data WHERE kunnr EQ '0000010298'.
-      APPEND gs_data TO gt_honorarios2.
-    ENDLOOP.
-    SORT gt_honorarios2 BY pep_mask.
-    CLEAR gs_data.
+    SORT gt_honorarios BY pep_mask.
+    SORT gt_despesas   BY pep_mask.
 
-    SORT gt_honorarios BY pep_mask kunnr ASCENDING.
-    SORT gt_despesas   BY pep_mask kunnr ASCENDING.
+    DATA: lv_tothoras  TYPE i,
+          lv_totamount TYPE i.
 
-*    LOOP AT gt_kunnr INTO DATA(ls_kunnr).
+    "HONORARIOS
+    "--------------------------------------------------------------------------------------------------------------------------------------------------
+    LOOP AT gt_honorarios INTO gs_data.
 
-    IF gt_honorarios IS NOT INITIAL.
+      IF lv_old_assunto EQ gs_data-pep_mask.
+        CONTINUE.
+      ENDIF.
 
-*        LOOP AT gt_honorarios INTO gs_data WHERE kunnr = ls_kunnr.
-      LOOP AT gt_honorarios INTO gs_data.
+      "Tabelas de Montantes por Projetos e Subprojetos
+      "--------------------------------------------------------------------------------------------------------------------------------------------
+      IF lv_index_assuntos EQ 0.
+        gv_strlen_assunto_pai    = strlen( gs_data-pep_mask ) - 1.
+        gv_assunto_pai           = substring( val = gs_data-pep_mask off = 0 len = gv_strlen_assunto_pai ).
+        gs_somatorios-assunto    = gs_data-pep_mask.
+        gs_somatorios-horatotal  = lv_total_hours.
+        gs_somatorios-valortotal = lv_total_amount.
+        APPEND gs_somatorios TO gt_somatorios.
+      ELSE.
+        gv_strlen_assunto_filho  = strlen( gs_data-pep_mask ) - 1.
+        gv_assunto_filho         = substring( val = gs_data-pep_mask off = 0 len = gv_strlen_assunto_filho ).
+        IF gv_assunto_pai EQ gv_assunto_filho.
+          gs_somatorios-assunto    = gs_data-pep_mask.
+          gs_somatorios-horatotal  = lv_total_hours.
+          gs_somatorios-valortotal = lv_total_amount.
+          APPEND gs_somatorios TO gt_somatorios.
+          gv_assunto_pai = gv_assunto_filho.
+        ELSE.
+          IF lines( gt_somatorios ) > 1.
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Discriminativo' ip_style = tp_style_bold_center_guid ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Horas'                 ip_style = tp_style_bold_center_guid ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'              ip_style = tp_style_bold_center_guid ).
+            ADD 1 TO lv_countlines.
 
-        IF lv_old_assunto EQ gs_data-pep_mask.
-          CONTINUE.
+            LOOP AT gt_somatorios INTO gs_somatorios.
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-horatotal  ip_style = tp_style_bold_center_guid4 ).
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
+              ADD 1 TO lv_countlines.
+
+              lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+              lv_totamount = lv_totamount + gs_somatorios-valortotal.
+            ENDLOOP.
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_tothoras  ip_style = tp_style_bold_center_guid5 ).
+            lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
+
+            ADD 2 TO lv_countlines.
+            CLEAR gs_somatorios.
+            CLEAR: lv_tothoras, lv_totamount.
+          ENDIF.
+          CLEAR gt_somatorios.
+          gs_somatorios-assunto    = gs_data-pep_mask.
+          gs_somatorios-horatotal  = lv_total_hours.
+          gs_somatorios-valortotal = lv_total_amount.
+          APPEND gs_somatorios TO gt_somatorios.
+          gv_assunto_pai           = gv_assunto_filho.
         ENDIF.
+      ENDIF.
 
-        "HONORARIOS
-        "--------------------------------------------------------------------------------------------------------------------------------------------------
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+      "ASSUNTO
+      "----------------------------------------------------------------------------------------------------------------------------------------------------------
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-kunnr } { gs_data-name1 }|    ip_style = tp_style_bold_center_guid8 ).
+      ADD 1 TO lv_countlines.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
+      ADD 1 TO lv_countlines.
+
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'           ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo' ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'          ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'     ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'       ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'           ip_style = tp_style_bold_center_guid ).
+      ADD 1 TO lv_countlines.
+
+      LOOP AT gt_honorarios INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask.
+
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data                           ip_style = tp_style_bold_center_guid3 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-horas                          ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data2-pvp                            ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data2-montante                       ip_style = tp_style_bold_center_guid2 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
         ADD 1 TO lv_countlines.
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_data-pep_mask } { gs_data-post1 }| ip_style = tp_style_bold_center_guid8 ).
+
+        "sum hours and amount to pay
+        lv_total_hours  = lv_total_hours  + gs_data2-horas.
+        lv_total_amount = lv_total_amount + gs_data2-montante.
+
+      ENDLOOP.
+
+      lv_old_assunto = gs_data-pep_mask.
+
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
+      ADD 2 TO lv_countlines.
+      ADD 1 TO lv_index_assuntos.
+
+      "insert amounts into sums by projects
+      LOOP AT gt_somatorios INTO gs_somatorios WHERE assunto EQ gs_data-pep_mask.
+        gs_somatorios-horatotal  = lv_total_hours.
+        gs_somatorios-valortotal = lv_total_amount.
+        MODIFY gt_somatorios FROM gs_somatorios.
+      ENDLOOP.
+      CLEAR: lv_total_hours, lv_total_amount.
+
+    ENDLOOP.
+
+    "Tabelas de Montantes por Projetos
+    "--------------------------------------------------------------------------------------------------------------------------------------------
+    IF lines( gt_somatorios ) > 1.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Discriminativo' ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Horas'                 ip_style = tp_style_bold_center_guid ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'              ip_style = tp_style_bold_center_guid ).
+      ADD 1 TO lv_countlines.
+
+      LOOP AT gt_somatorios INTO gs_somatorios.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-horatotal  ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
         ADD 1 TO lv_countlines.
 
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'           ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo' ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'          ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'     ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'       ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'           ip_style = tp_style_bold_center_guid ).
-        ADD 1 TO lv_countlines.
+        lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+        lv_totamount = lv_totamount + gs_somatorios-valortotal.
+      ENDLOOP.
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_tothoras  ip_style = tp_style_bold_center_guid5 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
 
-        LOOP AT gt_honorarios INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask.
+      ADD 2 TO lv_countlines.
+    ENDIF.
 
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data                           ip_style = tp_style_bold_center_guid3 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-horas                          ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data2-pvp                            ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data2-montante                       ip_style = tp_style_bold_center_guid2 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
-          ADD 1 TO lv_countlines.
+    CLEAR gs_somatorios.
+    CLEAR gt_somatorios.
+    CLEAR: lv_tothoras, lv_totamount.
+    CLEAR lv_index_assuntos.
 
-          "sum hours and amount to pay
-          lv_total_hours  = lv_total_hours  + gs_data2-horas.
-          lv_total_amount = lv_total_amount + gs_data2-montante.
-
-        ENDLOOP.
-
-        lv_old_assunto = gs_data-pep_mask.
-
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total do assunto' ip_style = tp_style_bold_center_guid9 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style    = tp_style_bold_center_guid5 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style    = tp_style_bold_center_guid5 ).
-        ADD 2 TO lv_countlines.
-
-        CLEAR: lv_total_hours, lv_total_amount.
-
-*          SUBPROJETOS
-*          --------------------------------------------------------------------------------------------------------------------------------------------------
-*          LOOP AT gt_subprojects INTO DATA(ls_subprojects).
-*
-*            IF lv_old_subassunto EQ ls_subprojects-pep_mask.
-*              CONTINUE.
-*            ENDIF.
-*
-*            "compare project with subproject
-*            DATA(strlen_pepmask) = strlen( gs_data-pep_mask ).
-*            DATA temp_pepmask TYPE string.
-*            temp_pepmask = ls_subprojects-pep_mask(strlen_pepmask).
-*
-*            IF temp_pepmask EQ gs_data-pep_mask. "is a subproject
-*
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ ls_subprojects-pep_mask } { ls_subprojects-post1 }| ip_style = tp_style_bold_center_guid8 ).
-*              ADD 1 TO lv_countlines.
-*
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'           ip_style = tp_style_bold_center_guid ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo' ip_style = tp_style_bold_center_guid ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Horas'          ip_style = tp_style_bold_center_guid ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Preço/Hora'     ip_style = tp_style_bold_center_guid ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'       ip_style = tp_style_bold_center_guid ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'           ip_style = tp_style_bold_center_guid ).
-*              ADD 1 TO lv_countlines.
-*
-*              LOOP AT gt_honorarios INTO DATA(gs_data3) WHERE pep_mask EQ ls_subprojects-pep_mask.
-*
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data3-data                           ip_style = tp_style_bold_center_guid3 ).
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data3-descriminativo_str             ip_style = tp_style_bold_center_guid6 ).
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data3-horas                          ip_style = tp_style_bold_center_guid4 ).
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_data3-pvp                            ip_style = tp_style_bold_center_guid4 ).
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_data3-montante                       ip_style = tp_style_bold_center_guid2 ).
-*                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_data2-rufnm } { gs_data2-pernr }| ip_style = tp_style_bold_center_guid2 ).
-*                ADD 1 TO lv_countlines.
-*
-*                "sum hours and amount to pay
-*                lv_total_hours  = lv_total_hours  + gs_data3-horas.
-*                lv_total_amount = lv_total_amount + gs_data3-montante.
-*
-*              ENDLOOP.
-*
-*              lv_old_subassunto = ls_subprojects-pep_mask.
-*
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total do assunto' ip_style = tp_style_bold_center_guid9 ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours     ip_style = tp_style_bold_center_guid5 ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount    ip_style = tp_style_bold_center_guid5 ).
-*              ADD 2 TO lv_countlines.
-*              CLEAR: lv_total_hours, lv_total_amount.
-*
-*            ENDIF.
-*          ENDLOOP.
-
-      ENDLOOP. "ENDLOOP HONORARIOS
-    ENDIF.     "ENDIF   HONORARIOS
-
-*          despesas
+    "DESPESAS
     "--------------------------------------------------------------------------------------------------------------------------------------------------
     IF gt_despesas IS NOT INITIAL.
 
-*            LOOP AT gt_despesas INTO DATA(gs_despesas3) WHERE pep_mask EQ gs_data-pep_mask AND kunnr EQ ls_kunnr.
       LOOP AT gt_despesas INTO DATA(gs_despesas3).
 
-        IF lv_old_subassunto_despesa EQ gs_data-pep_mask.
+        IF lv_old_subassunto_despesa EQ gs_despesas3-pep_mask.
           CONTINUE.
         ENDIF.
 
+        "Tabelas de Montantes por Projetos e Subprojetos
+        "--------------------------------------------------------------------------------------------------------------------------------------------
+        IF lv_index_assuntos EQ 0.
+          gv_strlen_assunto_pai    = strlen( gs_despesas3-pep_mask ) - 1.
+          gv_assunto_pai           = substring( val = gs_despesas3-pep_mask off = 0 len = gv_strlen_assunto_pai ).
+          gs_somatorios-assunto    = gs_despesas3-pep_mask.
+          gs_somatorios-horatotal  = lv_total_hours.
+          gs_somatorios-valortotal = lv_total_amount.
+          APPEND gs_somatorios TO gt_somatorios.
+        ELSE.
+          gv_strlen_assunto_filho  = strlen( gs_despesas3-pep_mask ) - 1.
+          gv_assunto_filho         = substring( val = gs_despesas3-pep_mask off = 0 len = gv_strlen_assunto_filho ).
+          IF gv_assunto_pai EQ gv_assunto_filho.
+            gs_somatorios-assunto    = gs_despesas3-pep_mask.
+            gs_somatorios-horatotal  = lv_total_hours.
+            gs_somatorios-valortotal = lv_total_amount.
+            APPEND gs_somatorios TO gt_somatorios.
+            gv_assunto_pai = gv_assunto_filho.
+          ELSE.
+            IF lines( gt_somatorios ) > 1.
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Despesas' ip_style = tp_style_bold_center_guid ).
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Montante'        ip_style = tp_style_bold_center_guid ).
+              ADD 1 TO lv_countlines.
+
+              LOOP AT gt_somatorios INTO gs_somatorios.
+                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+                lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
+                ADD 1 TO lv_countlines.
+
+                lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+                lv_totamount = lv_totamount + gs_somatorios-valortotal.
+              ENDLOOP.
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
+
+              ADD 2 TO lv_countlines.
+              CLEAR gs_somatorios.
+              CLEAR: lv_tothoras, lv_totamount.
+            ENDIF.
+            CLEAR gt_somatorios.
+            gs_somatorios-assunto    = gs_data-pep_mask.
+            gs_somatorios-horatotal  = lv_total_hours.
+            gs_somatorios-valortotal = lv_total_amount.
+            APPEND gs_somatorios TO gt_somatorios.
+            gv_assunto_pai           = gv_assunto_filho.
+          ENDIF.
+        ENDIF.
+
+        "DESPESAS
+        "--------------------------------------------------------------------------------------------------------------------------------------------------------------
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-kunnr } { gs_despesas3-name1 }|    ip_style = tp_style_bold_center_guid8 ).
         ADD 1 TO lv_countlines.
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = |{ gs_despesas3-pep_mask } { gs_despesas3-post1 }| ip_style = tp_style_bold_center_guid8 ).
         ADD 1 TO lv_countlines.
 
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                      ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Discriminativo (Despesas)' ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Designação'                ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Relatório da Despesa'      ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'                  ip_style = tp_style_bold_center_guid ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                      ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = 'Data'                 ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Despesas'             ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Designação'           ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Relatório da Despesa' ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = 'Montante'             ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = 'Nome'                 ip_style = tp_style_bold_center_guid ).
         ADD 1 TO lv_countlines.
 
         LOOP AT gt_despesas INTO DATA(gs_despesas4) WHERE pep_mask EQ gs_despesas3-pep_mask.
@@ -385,7 +550,7 @@ CLASS lcl_excel_form IMPLEMENTATION.
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_despesas4-data                               ip_style = tp_style_bold_center_guid3 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_despesas4-descriminativo_str                 ip_style = tp_style_bold_center_guid6 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt                           ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-belnr                              ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-relexp                             ip_style = tp_style_bold_center_guid4 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_despesas4-montante                           ip_style = tp_style_bold_center_guid2 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = |{ gs_despesas4-rufnm } { gs_despesas4-pernr }| ip_style = tp_style_bold_center_guid2 ).
           ADD 1 TO lv_countlines.
@@ -396,23 +561,51 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
         ENDLOOP.
 
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total das despesas' ip_style = tp_style_bold_center_guid9 ).
-*              lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours       ip_style = tp_style_bold_center_guid5 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount      ip_style = tp_style_bold_center_guid5 ).
-        ADD 2 TO lv_countlines.
+        lv_old_subassunto_despesa = gs_despesas3-pep_mask.
 
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
+        ADD 2 TO lv_countlines.
+        ADD 1 TO lv_index_assuntos.
+
+        "insert amounts into sums by projects
+        LOOP AT gt_somatorios INTO gs_somatorios WHERE assunto EQ gs_despesas3-pep_mask.
+          gs_somatorios-valortotal = lv_total_amount.
+          MODIFY gt_somatorios FROM gs_somatorios.
+        ENDLOOP.
         CLEAR: lv_total_hours, lv_total_amount.
 
-      ENDLOOP. "ENDLOOP DESPESAS
-    ENDIF.     "ENDIF DESPESAS
+      ENDLOOP.
 
-*    ENDLOOP. "ENDLOOP CLIENTES
+      "Tabelas de Montantes por Projetos e Subprojetos de Despesas
+      "--------------------------------------------------------------------------------------------------------------------------------------------
+      IF lines( gt_somatorios ) > 1.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Despesas' ip_style = tp_style_bold_center_guid ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Montante'        ip_style = tp_style_bold_center_guid ).
+        ADD 1 TO lv_countlines.
 
+        LOOP AT gt_somatorios INTO gs_somatorios.
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_somatorios-assunto    ip_style = tp_style_bold_center_guid5 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_somatorios-valortotal ip_style = tp_style_bold_center_guid4 ).
+          ADD 1 TO lv_countlines.
 
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
-    "                                                          ADJUST FOR COLUMNS
-    "--------------------------------------------------------------------------------------------------------------------------------------------------
+          lv_tothoras  = lv_tothoras  + gs_somatorios-horatotal.
+          lv_totamount = lv_totamount + gs_somatorios-valortotal.
+        ENDLOOP.
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Total'      ip_style = tp_style_bold_center_guid9 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_totamount ip_style = tp_style_bold_center_guid5 ).
 
+        ADD 2 TO lv_countlines.
+      ENDIF.
+    ENDIF.
+
+    CLEAR gs_somatorios.
+    CLEAR gt_somatorios.
+    CLEAR: lv_tothoras, lv_totamount.
+    CLEAR lv_index_assuntos.
+
+    "COLUMNS
+    "-----------------------------------------------------------------
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'A' ).
     lo_column->set_width( ip_width = 10 ).
 
@@ -420,13 +613,13 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_column->set_width( ip_width = 100 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
-    lo_column->set_width( ip_width = 40 ).
+    lo_column->set_width( ip_width = 28 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 12 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 10 ).
 
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
     lo_column->set_width( ip_width = 35 ).
@@ -516,53 +709,24 @@ CLASS lcl_excel_form IMPLEMENTATION.
       LOOP AT gt_dados INTO DATA(ls_honorarios) WHERE lstar EQ 'A001'.
         MOVE-CORRESPONDING ls_honorarios TO gs_data.
         APPEND gs_data TO gt_honorarios.
-
-        IF gs_data-kunnr IS NOT INITIAL.
-          APPEND ls_honorarios-kunnr TO gt_kunnr.
-        ELSE.
-          APPEND ls_honorarios TO gt_subprojects.
-        ENDIF.
       ENDLOOP.
       SORT gt_honorarios BY pep_mask ASCENDING.
     ELSEIF lv_flag_despesas EQ 'X'.
       LOOP AT gt_dados INTO DATA(ls_despesas) WHERE lstar NE 'A001'.
         MOVE-CORRESPONDING ls_despesas TO gs_data.
         APPEND gs_data TO gt_despesas.
-
-        IF gs_data-kunnr IS NOT INITIAL.
-          APPEND ls_despesas-kunnr TO gt_kunnr.
-        ELSE.
-          APPEND ls_honorarios TO gt_subprojects.
-        ENDIF.
       ENDLOOP.
     ELSE.
       LOOP AT gt_dados INTO DATA(ls_honorarios2) WHERE lstar EQ 'A001'.
         MOVE-CORRESPONDING ls_honorarios2 TO gs_data.
         APPEND gs_data TO gt_honorarios.
-
-        IF ls_honorarios2-kunnr IS NOT INITIAL.
-          APPEND ls_honorarios2-kunnr TO gt_kunnr.
-        ELSE.
-          APPEND ls_honorarios2 TO gt_subprojects.
-        ENDIF.
       ENDLOOP.
       SORT gt_honorarios BY pep_mask ASCENDING.
       LOOP AT gt_dados INTO DATA(ls_despesas2) WHERE lstar NE 'A001'.
         MOVE-CORRESPONDING ls_despesas2 TO gs_data.
         APPEND gs_data TO gt_despesas.
-
-        IF ls_despesas2-kunnr IS NOT INITIAL.
-          APPEND ls_despesas2-kunnr TO gt_kunnr.
-        ELSE.
-          APPEND ls_honorarios2 TO gt_subprojects.
-        ENDIF.
       ENDLOOP.
     ENDIF.
-
-    SORT gt_kunnr ASCENDING.       "customers
-    SORT gt_subprojects ASCENDING. "subprojects
-
-    DELETE ADJACENT DUPLICATES FROM gt_kunnr.
 
   ENDMETHOD.
 
@@ -682,7 +846,8 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_style->font->size                 = 10.
     lo_style->font->color-rgb            = zcl_excel_style_color=>c_black.
     lo_style->alignment->horizontal      = zcl_excel_style_alignment=>c_horizontal_center.
-    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_top.
+    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_center.
+    lo_style->alignment->wraptext        = abap_true.
     lo_style->borders->allborders        = o_border_light.
     lo_style->fill->filltype             = zcl_excel_style_fill=>c_fill_solid.
     lo_style->fill->fgcolor-rgb          = zcl_excel_style_color=>c_gray.
@@ -705,7 +870,7 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
     "default
     lo_style                             = o_xl->add_new_style( ).
-    lo_style->font->bold                 = abap_false.
+    lo_style->font->bold                 = abap_true.
     lo_style->font->italic               = abap_false.
     lo_style->font->name                 = zcl_excel_style_font=>c_name_arial.
     lo_style->font->scheme               = zcl_excel_style_font=>c_scheme_none.
@@ -785,8 +950,8 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_style->font->scheme               = zcl_excel_style_font=>c_scheme_none.
     lo_style->font->size                 = 10.
     lo_style->font->color-rgb            = zcl_excel_style_color=>c_black.
-    lo_style->alignment->horizontal      = zcl_excel_style_alignment=>c_horizontal_center.
-    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_bottom.
+    lo_style->alignment->horizontal      = zcl_excel_style_alignment=>c_horizontal_left.
+    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_top.
     lo_style->alignment->wraptext        = abap_true.
     lo_style->borders->allborders        = o_border_dark.
     lo_style->fill->filltype             = zcl_excel_style_fill=>c_fill_solid.
