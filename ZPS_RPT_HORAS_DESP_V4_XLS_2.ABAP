@@ -1,6 +1,6 @@
 *&---------------------------------------------------------------------*
 *& Include          ZPS_RPT_HORAS_DESP_V4_XLS
-*&---------------------------------------------------------------------* 
+*&---------------------------------------------------------------------*
 
 *$*$-------------------------------------------------------------------*
 *$*  MODIFICAÇÕES
@@ -11,60 +11,8 @@
 *& Transporte   : S4DK908489
 *& Ch. pesquisa : SBX-ID-EXCEL_FORM
 *& Objetivo     : Exportação Arquivo Excel
-*&--------------------------------------------------------------------
-
-*$*$-------------------------------------------------------------------*
-*$*  MODIFICAÇÕES
-*$---------------------------------------------------------------------*
-*& Autor        : Rafael Albuquerque (SBX)
-*& Data         : 21.08.2025
-*& Referência   : INC0138977
-*& Transporte   : S4DK908489
-*& Ch. pesquisa : RLA@SBX-ID-EXCEL_FORM
-*& Objetivo     : - Inserir a denominação dos clientes e assuntos na coluna A
-*&                - Inserir a denominação dos clientes e assuntos na coluna A
-*&                - Remover bordas da Coluna A
-*&                - Diminuir tamanho da Coluna A
-*&--------------------------------------------------------------------
-
-*$*$-------------------------------------------------------------------*
-*$*  MODIFICAÇÕES
-*$---------------------------------------------------------------------*
-*& Autor        : Rafael Albuquerque (SBX)
-*& Data         : 25.08.2025
-*& Referência   : INC0138977
-*& Transporte   : S4DK908489
-*& Ch. pesquisa : RLA@SBX-ID-EXCEL_FORM
-*& Objetivo     : - Novo Estilo para célula - Discriminativo alinhado em vertical baixo
-*&                - Correção no espaçamento de linhas para o subtotal ao final do ficheiro
-*&                - Alterações na tela de seleção e obrigatoriedade de preenchimento de campos
-*&--------------------------------------------------------------------
-
-*$*$-------------------------------------------------------------------*
-*$*  MODIFICAÇÕES
-*$---------------------------------------------------------------------*
-*& Autor        : Rafael Albuquerque (SBX)
-*& Data         : 25.08.2025
-*& Referência   : INC0138977
-*& Transporte   : S4DK908489
-*& Ch. pesquisa : RLA@SBX-ID-EXCEL_FORM_003
-*& Objetivo     : - Ao selecionar as opções que possuam despesas, no excel deve aparecer...
-"                   após a soma dos honorários uma secção das despesas com o mesmo cabeçalho do honorário.
-"                   Saltar 1 linha e criar a secção das despesas com a somas
-*&                - No cabeçalho, ajustar de forma que apareça "Código + cliente e Código + assunto" na mesma linha, reduzindo de 4 linhas para 2
-*&                - Retirar do excel a coluna "Preço/Hora(ADV)"
-*&                - Incluir no excel, após o nome do advogado o código.
-*&--------------------------------------------------------------------
-
-*$*$-------------------------------------------------------------------*
-*$*  MODIFICAÇÕES
-*$---------------------------------------------------------------------*
-*& Autor        : Rafael Albuquerque (SBX)
-*& Data         : 23.09.2025
-*& Referência   : INC0138977
-*& Transporte   : S4DK908489
-*& Ch. pesquisa : RLA@SBX-ID-EXCEL_FORM_004
-*& Objetivo     : - new excel layout customization
+*&
+*& Atualização : 2025.10.16 :: RLA@SBX :: INC0138977 :: Cálculos de Horas Ficheiro Excel
 *&--------------------------------------------------------------------
 
 CLASS lcl_excel_form DEFINITION.
@@ -109,7 +57,8 @@ CLASS lcl_excel_form DEFINITION.
       tp_style_bold_center_guid8  TYPE zexcel_cell_style,
 *      RLA@SBX-ID-EXCEL_FORM_004
       tp_style_bold_center_guid9  TYPE zexcel_cell_style,
-      tp_style_bold_center_guid10 TYPE zexcel_cell_style.
+      tp_style_bold_center_guid10 TYPE zexcel_cell_style,
+      tp_style_bold_center_guid11 TYPE zexcel_cell_style.
 *      RLA@SBX-ID-EXCEL_FORM_004
 
     DATA: "excel file variables
@@ -123,8 +72,8 @@ CLASS lcl_excel_form DEFINITION.
 
     TYPES: BEGIN OF ty_somatorios,
              assunto    TYPE string,
-             horatotal  TYPE i,
-             valortotal TYPE i,
+             horatotal  TYPE p DECIMALS 2 LENGTH 13,
+             valortotal TYPE p DECIMALS 2 LENGTH 13,
            END OF ty_somatorios.
 
 *    RLA@SBX-ID-EXCEL_FORM_004
@@ -135,6 +84,7 @@ CLASS lcl_excel_form DEFINITION.
           gv_assunto_filho TYPE string.
     DATA: gv_strlen_assunto_pai   TYPE i,
           gv_strlen_assunto_filho TYPE i.
+
 *    RLA@SBX-ID-EXCEL_FORM_004
 
 ENDCLASS.
@@ -172,8 +122,15 @@ CLASS lcl_excel_form IMPLEMENTATION.
     SORT gt_honorarios BY pep_mask.
     SORT gt_despesas   BY pep_mask.
 
-    DATA: lv_tothoras  TYPE i,
-          lv_totamount TYPE i.
+    "RLA@SBX :: Cálculos de Horas Ficheiro Excel :: Begin
+    DATA: lv_tothoras  TYPE p DECIMALS 2,
+          lv_totamount TYPE p DECIMALS 2.
+    "RLA@SBX :: Cálculos de Horas Ficheiro Excel :: End
+
+    DATA: strlen_col_c     TYPE i,
+          strlen_col_f     TYPE i,
+          strlen_col_c_aux TYPE i,
+          strlen_col_f_aux TYPE i.
 
     LOOP AT gt_despesas INTO DATA(gs_despesas3).
 
@@ -246,23 +203,31 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
       LOOP AT gt_despesas INTO DATA(gs_despesas4) WHERE pep_mask EQ gs_despesas3-pep_mask.
 
+        DATA(lv_relexp) = COND #( WHEN gs_despesas4-relexp+0(1) EQ 0 THEN gs_despesas4-relexp+1(5) ELSE gs_despesas4-relexp ). "XXXXXX to XXXXX"
+
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_despesas4-data               ip_style = tp_style_bold_center_guid3 ).
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_despesas4-descriminativo_str ip_style = tp_style_bold_center_guid6 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt           ip_style = tp_style_bold_center_guid4 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-relexp             ip_style = tp_style_bold_center_guid4 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt           ip_style = tp_style_bold_center_guid11 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_relexp                       ip_style = tp_style_bold_center_guid4 ).
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_despesas4-montante           ip_style = tp_style_bold_center_guid2 ).
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = gs_despesas4-rufnm              ip_style = tp_style_bold_center_guid2 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = gs_despesas4-rufnm              ip_style = tp_style_bold_center_guid11 ).
         ADD 1 TO lv_countlines.
 
         "sum hours and amount to pay
         lv_total_hours  = lv_total_hours  + gs_despesas4-horas.
         lv_total_amount = lv_total_amount + gs_despesas4-montante.
 
+*        "get size string to column c and f
+*        strlen_col_f_aux = strlen( gs_despesas4-rufnm ).
+*        strlen_col_f     = COND #( WHEN strlen_col_f_aux GT strlen_col_f THEN strlen_col_f_aux ELSE strlen_col_f ).
+*        strlen_col_c_aux = strlen( gs_despesas4-type_txt ).
+*        strlen_col_c     = COND #( WHEN strlen_col_c_aux GT strlen_col_c THEN strlen_col_c_aux ELSE strlen_col_c ).
+
       ENDLOOP.
 
       lv_old_subassunto_despesa = gs_despesas3-pep_mask.
 
-      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Total'        ip_style = tp_style_bold_center_guid9 ).
       lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
       ADD 2 TO lv_countlines.
       ADD 1 TO lv_index_assuntos.
@@ -313,17 +278,14 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
     lo_column->set_width( ip_width = 28 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
     lo_column->set_width( ip_width = 12 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
     lo_column->set_width( ip_width = 12 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 35 ).
 *    RLA@SBX-ID-EXCEL_FORM_004
 
   ENDMETHOD.
@@ -359,8 +321,15 @@ CLASS lcl_excel_form IMPLEMENTATION.
     SORT gt_honorarios BY pep_mask.
     SORT gt_despesas   BY pep_mask.
 
-    DATA: lv_tothoras  TYPE i,
-          lv_totamount TYPE i.
+    "RLA@SBX :: Cálculos de Horas Ficheiro Excel :: Begin
+    DATA: lv_tothoras  TYPE p DECIMALS 2,
+          lv_totamount TYPE p DECIMALS 2.
+    "RLA@SBX :: Cálculos de Horas Ficheiro Excel :: End
+
+    DATA: strlen_col_c     TYPE i,
+          strlen_col_f     TYPE i,
+          strlen_col_c_aux TYPE i,
+          strlen_col_f_aux TYPE i.
 
     "HONORARIOS
     "--------------------------------------------------------------------------------------------------------------------------------------------------
@@ -438,6 +407,8 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
       LOOP AT gt_honorarios INTO DATA(gs_data2) WHERE pep_mask EQ gs_data-pep_mask.
 
+*        gs_data2-rufnm = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'. "test 40
+
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_data2-data               ip_style = tp_style_bold_center_guid3 ).
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_data2-descriminativo_str ip_style = tp_style_bold_center_guid6 ).
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_data2-horas              ip_style = tp_style_bold_center_guid4 ).
@@ -450,11 +421,14 @@ CLASS lcl_excel_form IMPLEMENTATION.
         lv_total_hours  = lv_total_hours  + gs_data2-horas.
         lv_total_amount = lv_total_amount + gs_data2-montante.
 
+*        strlen_col_f_aux = strlen( gs_data2-rufnm ).
+*        strlen_col_f     = COND #( WHEN strlen_col_f_aux GT strlen_col_f THEN strlen_col_f_aux ELSE strlen_col_f ).
+
       ENDLOOP.
 
       lv_old_assunto = gs_data-pep_mask.
 
-      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+      lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = 'Total'        ip_style = tp_style_bold_center_guid9 ).
       lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = lv_total_hours  ip_style = tp_style_bold_center_guid5 ).
       lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
       ADD 2 TO lv_countlines.
@@ -470,7 +444,7 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
     ENDLOOP.
 
-    "Tabelas de Montantes por Projetos
+    "Tabelas de Montantes por Assuntos
     "--------------------------------------------------------------------------------------------------------------------------------------------
     IF lines( gt_somatorios ) > 1.
       lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = 'Resumo Discriminativo' ip_style = tp_style_bold_center_guid ).
@@ -574,23 +548,31 @@ CLASS lcl_excel_form IMPLEMENTATION.
 
         LOOP AT gt_despesas INTO DATA(gs_despesas4) WHERE pep_mask EQ gs_despesas3-pep_mask.
 
+          DATA(lv_relexp2) = COND #( WHEN gs_despesas4-relexp+0(1) EQ 0 THEN gs_despesas4-relexp+1(5) ELSE gs_despesas4-relexp ). "XXXXXX to XXXXX"
+
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'A' ip_value = gs_despesas4-data               ip_style = tp_style_bold_center_guid3 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'B' ip_value = gs_despesas4-descriminativo_str ip_style = tp_style_bold_center_guid6 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt           ip_style = tp_style_bold_center_guid4 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = gs_despesas4-relexp             ip_style = tp_style_bold_center_guid4 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'C' ip_value = gs_despesas4-type_txt           ip_style = tp_style_bold_center_guid11 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = lv_relexp2                      ip_style = tp_style_bold_center_guid4 ).
           lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = gs_despesas4-montante           ip_style = tp_style_bold_center_guid2 ).
-          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = gs_despesas4-rufnm              ip_style = tp_style_bold_center_guid2 ).
+          lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'F' ip_value = gs_despesas4-rufnm              ip_style = tp_style_bold_center_guid11 ).
           ADD 1 TO lv_countlines.
 
           "sum hours and amount to pay
           lv_total_hours  = lv_total_hours  + gs_despesas4-horas.
           lv_total_amount = lv_total_amount + gs_despesas4-montante.
 
+          "get size string to column c and f
+*          strlen_col_f_aux = strlen( gs_despesas4-rufnm ).
+*          strlen_col_f     = COND #( WHEN strlen_col_f_aux GT strlen_col_f THEN strlen_col_f_aux ELSE strlen_col_f ).
+*          strlen_col_c_aux = strlen( gs_despesas4-type_txt ).
+*          strlen_col_c     = COND #( WHEN strlen_col_c_aux GT strlen_col_c THEN strlen_col_c_aux ELSE strlen_col_c ).
+
         ENDLOOP.
 
         lv_old_subassunto_despesa = gs_despesas3-pep_mask.
 
-        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Totais'        ip_style = tp_style_bold_center_guid9 ).
+        lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'D' ip_value = 'Total'        ip_style = tp_style_bold_center_guid9 ).
         lo_worksheet->set_cell( ip_row = lv_countlines ip_column = 'E' ip_value = lv_total_amount ip_style = tp_style_bold_center_guid5 ).
         ADD 2 TO lv_countlines.
         ADD 1 TO lv_index_assuntos.
@@ -642,17 +624,15 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'C' ).
     lo_column->set_width( ip_width = 28 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'D' ).
     lo_column->set_width( ip_width = 12 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'E' ).
     lo_column->set_width( ip_width = 12 ).
 
-    lo_column->set_auto_size( ip_auto_size = abap_false ).
     lo_column = lo_worksheet->get_column_dimension( ip_column = 'F' ).
-    lo_column->set_width( ip_width = 20 ).
+    lo_column->set_width( ip_width = 35 ).
+
 *    RLA@SBX-ID-EXCEL_FORM_004
 
   ENDMETHOD.
@@ -1035,6 +1015,22 @@ CLASS lcl_excel_form IMPLEMENTATION.
     lo_style->fill->fgcolor-rgb          = zcl_excel_style_color=>c_white.
 *    lo_style->number_format->format_code = '#,##0.00'.
     tp_style_bold_center_guid10           = lo_style->get_guid( ). "nao esquecer
+
+    "discriminative lawyer name
+    lo_style                             = o_xl->add_new_style( ).
+    lo_style->font->bold                 = abap_false.
+    lo_style->font->italic               = abap_false.
+    lo_style->font->name                 = zcl_excel_style_font=>c_name_arial.
+    lo_style->font->scheme               = zcl_excel_style_font=>c_scheme_none.
+    lo_style->font->size                 = 10.
+    lo_style->font->color-rgb            = zcl_excel_style_color=>c_black.
+    lo_style->alignment->horizontal      = zcl_excel_style_alignment=>c_horizontal_center.
+    lo_style->alignment->vertical        = zcl_excel_style_alignment=>c_vertical_top.
+    lo_style->alignment->wraptext        = abap_true.
+    lo_style->borders->allborders        = o_border_dark.
+    lo_style->fill->filltype             = zcl_excel_style_fill=>c_fill_solid.
+    lo_style->fill->fgcolor-rgb          = zcl_excel_style_color=>c_white.
+    tp_style_bold_center_guid11          = lo_style->get_guid( ). "nao esquecer
 *    RLA@SBX-ID-EXCEL_FORM_004
 
     "é possível montar vários estilos guid e usar da forma como convém
